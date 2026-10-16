@@ -4187,7 +4187,17 @@ class _ReaderPageState extends State<ReaderPage>
         ? const NovelChapter('目录为空', '')
         : widget.novel.chapters[_chapter];
     _layoutWidth = MediaQuery.sizeOf(context).width;
-    _layoutTypeface = widget.state.appTypeface;
+    // A global typeface switch rebuilds this state through the app shell's
+    // appearance listeners rather than an inherited dependency, so the shell
+    // AnimatedBuilder never sees the face change. Detect it where the face is
+    // recorded and re-anchor exactly like the metrics path above.
+    if (_layoutTypeface != widget.state.appTypeface) {
+      final captured = _ready && !_restoring && _layoutWidth > 0
+          ? _currentPosition()
+          : null;
+      _layoutTypeface = widget.state.appTypeface;
+      if (captured != null) _prepareRestore(captured);
+    }
     return Scaffold(
       // The catalogue owns the keyboard inset; keep the obscured article and
       // its saved scroll geometry fixed while searching in the drawer.
@@ -4199,16 +4209,6 @@ class _ReaderPageState extends State<ReaderPage>
         child: AnimatedBuilder(
           animation: widget.state.readerSettingsChanges,
           builder: (context, _) {
-            if (_layoutTypeface != widget.state.appTypeface) {
-              // A global typeface switch arrives as a notification, not a
-              // widget update or an inherited dependency anymore: re-anchor
-              // here exactly like the metrics path in didChangeDependencies.
-              _layoutTypeface = widget.state.appTypeface;
-              if (_ready && !_restoring && _layoutWidth > 0) {
-                final position = _currentPosition();
-                if (position != null) _prepareRestore(position);
-              }
-            }
             final palette = _readerPalette(context);
             return Stack(
           children: [
