@@ -481,7 +481,11 @@ class AppUpdates extends ChangeNotifier {
         error = failure is FormatException ? failure.message : '下载失败，请检查网络后重试';
       }
     } finally {
-      if (part != null && await part.exists()) await part.delete();
+      // Deleting the partial download must not mask the download outcome by
+      // turning this method's future into an unhandled error.
+      try {
+        if (part != null && await part.exists()) await part.delete();
+      } catch (_) {}
       _download = null;
       downloading = false;
       _notify();

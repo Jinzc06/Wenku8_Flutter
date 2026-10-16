@@ -27,6 +27,7 @@ import 'low_performance_page.dart';
 import 'reader_catalogue.dart';
 import 'reader_chrome.dart';
 import 'reader_content.dart';
+import 'reader_paging.dart';
 import 'reader_follow_scroll.dart';
 import 'reader_illustrations.dart';
 import 'reader_find.dart';
@@ -1119,6 +1120,49 @@ class _ShelfPageState extends State<ShelfPage> {
     return added != 0 ? added : a.compareTo(b);
   }
 
+  Widget _spineCarousel(List<int> saved) {
+    final books = <Novel>[];
+    var pending = 0;
+    for (final id in saved) {
+      final book = _known(id);
+      if (book != null) {
+        books.add(book);
+        continue;
+      }
+      pending++;
+      if (_requests.containsKey(id)) continue;
+      // rememberNovel republishes the shelf; the local rebuild also picks up
+      // metadata that arrived without a state notification.
+      _requests.putIfAbsent(id, () => _resolve(id)).then((_) {
+        if (mounted) setState(() {});
+      });
+    }
+    if (books.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 90),
+        child: pending > 0
+            ? const BookRowSkeleton(label: '正在载入书架')
+            : const Text('书架书籍暂未载入，可切回列表视图重试'),
+      );
+    }
+    return ArchiveFileCarousel(
+      key: ValueKey(
+        'shelf-archive-${state.shelfSort}-${state.shelfFilter}-'
+        '${books.length}-${books.first.id}',
+      ),
+      books: books,
+      reduceMotion: state.reduceMotion,
+      animateEntrance: true,
+      onOpen: (book, tag) => openDetail(
+        context,
+        book,
+        state,
+        widget.repository,
+        coverHeroTag: tag,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => ActiveListenableBuilder(
     listenable: _changes,
@@ -1137,7 +1181,11 @@ class _ShelfPageState extends State<ShelfPage> {
             24,
             MediaQuery.paddingOf(context).bottom + 120,
           ),
-          itemCount: saved.isEmpty ? 2 : saved.length + 1,
+          itemCount: saved.isEmpty
+              ? 2
+              : state.shelfDisplay == 'carousel'
+              ? 2
+              : saved.length + 1,
           itemBuilder: (context, index) {
             if (index == 0) {
               return Padding(
@@ -1229,6 +1277,9 @@ class _ShelfPageState extends State<ShelfPage> {
                   ],
                 ),
               );
+            }
+            if (state.shelfDisplay == 'carousel') {
+              return _spineCarousel(saved);
             }
             final id = saved[index - 1];
             final book = _known(id);
@@ -1478,6 +1529,61 @@ class SettingsPage extends StatelessWidget {
             ),
             const SizedBox(height: 24),
           ],
+          sectionHeader(context, '书架', ''),
+          const SizedBox(height: 14),
+          ContentPanel(
+            child: Row(
+              children: [
+                const Icon(CupertinoIcons.books_vertical, size: 21),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '书架展示方式',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        '以首页书脊轮播样式浏览书架藏书',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                CupertinoSlidingSegmentedControl<String>(
+                  key: const ValueKey('settings-shelf-display'),
+                  groupValue: state.shelfDisplay,
+                  children: const {
+                    'list': Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8),
+                      child: Text('列表'),
+                    ),
+                    'carousel': Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8),
+                      child: Text('书脊'),
+                    ),
+                  },
+                  onValueChanged: (value) {
+                    if (value != null) {
+                      _savePreference(
+                        context,
+                        () => state.setShelfView(display: value),
+                      );
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
           sectionHeader(context, '阅读偏好', ''),
           const SizedBox(height: 14),
           ContentPanel(
@@ -2803,6 +2909,15 @@ class _ReaderPageState extends State<ReaderPage>
   late final AnimationController _chrome;
   bool _chromeTarget = true;
 
+  // Horizontal page mode: pagination rebuilds when its inputs change and page
+  // indices are translated back into paragraph anchors for persistence.
+  PageController? _pages;
+  ReaderPagination? _pagination;
+  Object? _paginationKey;
+  int _page = 0;
+  double _pageViewportHeight = 0;
+  String _renderedPageMode = 'scroll';
+
   @override
   void initState() {
     super.initState();
@@ -2852,6 +2967,7 @@ class _ReaderPageState extends State<ReaderPage>
     _followTicket++;
     _followScroll.dispose();
     WidgetsBinding.instance.removeObserver(this);
+    _pages?.dispose();
     _scroll.dispose();
     _chapterReveal.dispose();
     _chrome.dispose();
@@ -3023,6 +3139,26 @@ class _ReaderPageState extends State<ReaderPage>
                   !_followLocallyPaused));
       if (!allowed()) return;
       try {
+        if (widget.state.readerPageMode == 'horizontal') {
+          final pagination = _pagination;
+          final controller = _pages;
+          if (pagination == null ||
+              controller?.hasClients != true ||
+              pagination.pageCount < 1) {
+            return;
+          }
+          final page = pagination
+              .pageOfParagraph(paragraph)
+              .clamp(0, pagination.pageCount - 1);
+          if (controller.page?.round() != page) {
+            await controller.animateToPage(
+              page,
+              duration: NovelMotion.enter,
+              curve: Curves.easeOutCubic,
+            );
+          }
+          return;
+        }
         await _followScroll.reveal(
           allowed: allowed,
           reduceMotion:
@@ -3114,6 +3250,16 @@ class _ReaderPageState extends State<ReaderPage>
     _currentContent = null;
     _illustrationsRefreshing = false;
     _ready = false;
+    // The outgoing page bank unmounts with this frame's rebuild; disposing
+    // its controller now would run while it is still attached.
+    final retiredPages = _pages;
+    _pagination = null;
+    _paginationKey = null;
+    _pages = null;
+    _page = 0;
+    if (retiredPages != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => retiredPages.dispose());
+    }
     _restorePending = position;
     _restoreQueued = false;
     _restoring = false;
@@ -3238,8 +3384,9 @@ class _ReaderPageState extends State<ReaderPage>
   }
 
   void _pageBy(int direction) {
+    final horizontal = widget.state.readerPageMode == 'horizontal';
     if (!_ready ||
-        !_scroll.hasClients ||
+        (horizontal ? _pages?.hasClients != true : !_scroll.hasClients) ||
         _toolsOpen ||
         _catalogueOpen ||
         _listeningOpen ||
@@ -3247,6 +3394,36 @@ class _ReaderPageState extends State<ReaderPage>
       return;
     }
     _suspendListeningFollow();
+    if (horizontal) {
+      final controller = _pages!;
+      final count = _pagination?.pageCount ?? 1;
+      final target = controller.page!.round() + direction;
+      if (target < 0) {
+        if (_chapter > 0) _go(_chapter - 1);
+        return;
+      }
+      if (target >= count) {
+        if (_chapter + 1 < widget.novel.chapters.length) _go(_chapter + 1);
+        return;
+      }
+      if (widget.state.reduceMotion ||
+          MediaQuery.disableAnimationsOf(context)) {
+        controller.jumpToPage(target);
+      } else {
+        unawaited(
+          controller
+              .animateToPage(
+                target,
+                duration: NovelMotion.contact,
+                curve: NovelMotion.ease,
+              )
+              .then((_) {
+                if (mounted) _saveWhenIdle();
+              }),
+        );
+      }
+      return;
+    }
     final position = _scroll.position;
     final target =
         (position.pixels +
@@ -3374,6 +3551,111 @@ class _ReaderPageState extends State<ReaderPage>
     );
   }
 
+  void _pagedTap(TapUpDetails details) {
+    final width = MediaQuery.sizeOf(context).width;
+    final x = details.localPosition.dx;
+    if (x < width / 3) {
+      _pageBy(-1);
+    } else if (x > width * 2 / 3) {
+      _pageBy(1);
+    } else {
+      _toggleChrome();
+    }
+  }
+
+  Widget _pagedArticle(
+    BuildContext context,
+    ReaderContent content,
+    TextStyle paragraphStyle,
+  ) {
+    final size = MediaQuery.sizeOf(context);
+    final topInset =
+        MediaQuery.paddingOf(context).top + FrostedHeader.toolbarHeight + 24;
+    final bottomInset = MediaQuery.paddingOf(context).bottom + 28;
+    final width = size.width - 52;
+    final height = size.height - topInset - bottomInset;
+    final key = (
+      width,
+      height,
+      widget.state.fontSize,
+      widget.state.lineHeight,
+      _layoutTextScale,
+      widget.state.appTypeface.name,
+      content.paragraphs.length,
+      _contentGeneration,
+    );
+    if (_pagination == null || key != _paginationKey) {
+      _pagination = paginateReaderParagraphs(
+        paragraphs: content.paragraphs,
+        maxWidth: width,
+        maxHeight: height,
+        style: paragraphStyle,
+        textScaler: MediaQuery.textScalerOf(context),
+      );
+      _paginationKey = key;
+      _pageViewportHeight = height;
+      // The retired bank unmounts with this frame; disposing its controller
+      // immediately would run while it is still attached.
+      final retired = _pages;
+      _pages = null;
+      if (_page >= _pagination!.pageCount) {
+        _page = math.max(0, _pagination!.pageCount - 1);
+      }
+      if (retired != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => retired.dispose());
+      }
+    }
+    final controller = _pages ??= PageController(initialPage: _page);
+    return PageView.builder(
+      key: const ValueKey('reader-pages'),
+      controller: controller,
+      allowImplicitScrolling: false,
+      onPageChanged: (page) {
+        _page = page;
+        _saveWhenIdle();
+      },
+      itemBuilder: (context, index) {
+        final slices = _pagination!.pages[index];
+        return Padding(
+          padding: EdgeInsets.only(top: topInset, left: 26, right: 26),
+          child: SingleChildScrollView(
+            physics: const NeverScrollableScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < slices.length; i++) ...[
+                  if (i > 0) const SizedBox(height: 16),
+                  _pagedParagraph(content, paragraphStyle, slices[i]),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _pagedParagraph(
+    ReaderContent content,
+    TextStyle style,
+    ReaderPageSlice slice,
+  ) {
+    final text = content.paragraphs[slice.paragraph];
+    final body = readerIllustrationUrl(text) != null || text.trim() == '[插图]'
+        ? _paragraphContent(content.paragraphs, slice.paragraph, style)
+        : Text(text.substring(slice.start, slice.end), style: style);
+    if (_listening case final controller?) {
+      return ListeningParagraphHighlight(
+        controller: controller,
+        novelId: widget.novel.id,
+        chapter: _chapter,
+        paragraph: slice.paragraph,
+        child: body,
+      );
+    }
+    return body;
+  }
+
   @override
   void didChangeMetrics() {
     if (!mounted || !_ready || _restoring) return;
@@ -3414,10 +3696,13 @@ class _ReaderPageState extends State<ReaderPage>
     final generation = _contentGeneration;
     _idleSave = Timer(const Duration(milliseconds: 160), () {
       _idleSave = null;
+      final horizontal = widget.state.readerPageMode == 'horizontal';
       if (mounted &&
           generation == _contentGeneration &&
-          _scroll.hasClients &&
-          !_scroll.position.isScrollingNotifier.value) {
+          (horizontal
+              ? _pages?.hasClients == true
+              : _scroll.hasClients &&
+                    !_scroll.position.isScrollingNotifier.value)) {
         _savePosition(notify: false);
       }
     });
@@ -3427,9 +3712,12 @@ class _ReaderPageState extends State<ReaderPage>
     // Explicit save/restore/exit supersedes any delayed copy of that position.
     _idleSave?.cancel();
     _idleSave = null;
+    final horizontal = widget.state.readerPageMode == 'horizontal';
     if (!_ready ||
         _restoring ||
-        !_scroll.hasClients ||
+        (horizontal
+            ? (_pages?.hasClients != true || _pagination == null)
+            : !_scroll.hasClients) ||
         (_typographyPreviewing && !finalSave)) {
       return;
     }
@@ -3449,13 +3737,23 @@ class _ReaderPageState extends State<ReaderPage>
       return;
     }
     final position = _currentPosition(includeParagraph: !duringLayout);
+    // Pages persist as a virtual pixel column so the stored fraction stays
+    // meaningful for both reading modes.
+    final pageCount = math.max(1, _pagination?.pageCount ?? 1);
+    final pageMetric = horizontal
+        ? (
+            offset: _pageViewportHeight * _page,
+            maximum: _pageViewportHeight * pageCount,
+          )
+        : null;
     unawaited(
       widget.state
           .savePosition(
             novel: widget.novel,
             chapter: _chapter,
-            offset: position?.offset ?? _scroll.offset,
-            maximum: _scroll.position.maxScrollExtent,
+            offset: position?.offset ?? pageMetric?.offset ?? _scroll.offset,
+            maximum:
+                pageMetric?.maximum ?? _scroll.position.maxScrollExtent,
             width: _layoutWidth,
             notify: notify,
             paragraphIndex: position?.paragraphIndex,
@@ -3467,12 +3765,65 @@ class _ReaderPageState extends State<ReaderPage>
     );
   }
 
+  // `_savePosition` refuses to run while `_restoring` is held, so a route that
+  // exits inside a jump loop would otherwise keep the pre-jump position. Each
+  // loop step records its destination so an interrupted jump still lands.
+  void _persistJumpTarget(double offset, double maximum) {
+    final anchor = _paragraphRegistry.capture(offset + _readingInset);
+    unawaited(
+      widget.state
+          .savePosition(
+            novel: widget.novel,
+            chapter: _chapter,
+            offset: offset,
+            maximum: maximum,
+            width: _layoutWidth,
+            notify: false,
+            paragraphIndex: anchor?.index,
+            paragraphFraction: anchor?.fraction ?? 0,
+            textScale: _textScale,
+            typeface: _layoutTypeface.name,
+          )
+          .catchError((Object _) {}),
+    );
+  }
+
   double get _textScale => _layoutTextScale;
 
   ReadingPosition? _currentPosition({
     bool includeParagraph = true,
     bool bookmark = false,
   }) {
+    if (widget.state.readerPageMode == 'horizontal') {
+      final pagination = _pagination;
+      final controller = _pages;
+      if (!_ready ||
+          _restoring ||
+          pagination == null ||
+          controller?.hasClients != true ||
+          widget.novel.chapters.isEmpty) {
+        return null;
+      }
+      final page = controller.page?.round() ?? _page;
+      final count = math.max(1, pagination.pageCount);
+      final slices = page >= 0 && page < pagination.pages.length
+          ? pagination.pages[page]
+          : const <ReaderPageSlice>[];
+      return ReadingPosition(
+        chapter: _chapter,
+        chapterId: widget.novel.chapters[_chapter].id,
+        offset: _pageViewportHeight * page,
+        fraction: count > 1 ? (page / (count - 1)).clamp(0, 1) : 0,
+        fontSize: widget.state.fontSize,
+        width: _layoutWidth,
+        updatedAt: DateTime.now().millisecondsSinceEpoch,
+        lineHeight: widget.state.lineHeight,
+        paragraphIndex: slices.isEmpty ? null : slices.first.paragraph,
+        paragraphFraction: 0,
+        textScale: _textScale,
+        typeface: _layoutTypeface.name,
+      );
+    }
     if (!_ready ||
         _restoring ||
         !_scroll.hasClients ||
@@ -3599,12 +3950,38 @@ class _ReaderPageState extends State<ReaderPage>
   }
 
   Future<void> _seekProgress(double fraction) async {
-    if (!_ready || !_scroll.hasClients) return;
+    final horizontal = widget.state.readerPageMode == 'horizontal';
+    if (!_ready ||
+        (horizontal ? _pages?.hasClients != true : !_scroll.hasClients)) {
+      return;
+    }
     _clearBookmarkLanding();
     final value = fraction.clamp(0.0, 1.0);
     final generation = _contentGeneration;
     final ticket = ++_restoreTicket;
     _restoring = true;
+    if (horizontal) {
+      final pagination = _pagination!;
+      final controller = _pages!;
+      final count = pagination.pageCount;
+      final destination = count > 1
+          ? (value * (count - 1)).round().clamp(0, count - 1)
+          : 0;
+      _persistJumpTarget(
+        _pageViewportHeight * destination,
+        _pageViewportHeight * count,
+      );
+      controller.jumpToPage(destination);
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted ||
+          generation != _contentGeneration ||
+          ticket != _restoreTicket) {
+        return;
+      }
+      _restoring = false;
+      _savePosition(notify: false);
+      return;
+    }
     // A lazy sliver refines its estimate after a large jump. Follow that new
     // extent for a bounded number of frames, including an exact chapter end.
     for (var step = 0; step < 4; step++) {
@@ -3615,7 +3992,9 @@ class _ReaderPageState extends State<ReaderPage>
         return;
       }
       final maximum = _scroll.position.maxScrollExtent;
-      _scroll.jumpTo(value * maximum);
+      final destination = value * maximum;
+      _scroll.jumpTo(destination);
+      _persistJumpTarget(destination, maximum);
       await WidgetsBinding.instance.endOfFrame;
       if (!mounted ||
           generation != _contentGeneration ||
@@ -3636,6 +4015,36 @@ class _ReaderPageState extends State<ReaderPage>
     final ticket = ++_restoreTicket;
     _restoring = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (widget.state.readerPageMode == 'horizontal') {
+        // Pages are exact: no lazy-extent refinement loop is needed, and the
+        // vertical guard below would never see an attached scroll position.
+        if (!mounted ||
+            generation != _contentGeneration ||
+            ticket != _restoreTicket ||
+            !_ready) {
+          return;
+        }
+        final saved = _restorePending;
+        _restorePending = null;
+        final pagination = _pagination;
+        final controller = _pages;
+        if (pagination != null &&
+            controller != null &&
+            pagination.pageCount > 0) {
+          var page = saved != null && saved.paragraphIndex != null
+              ? pagination.pageOfParagraph(saved.paragraphIndex!)
+              : saved != null && pagination.pageCount > 1
+              ? (saved.fraction * (pagination.pageCount - 1)).round()
+              : 0;
+          if (page < 0) page = 0;
+          if (page >= pagination.pageCount) page = pagination.pageCount - 1;
+          if (controller.hasClients) controller.jumpToPage(page);
+          _page = page;
+        }
+        _restoring = false;
+        _savePosition(notify: false);
+        return;
+      }
       if (!mounted ||
           generation != _contentGeneration ||
           ticket != _restoreTicket ||
@@ -3761,6 +4170,28 @@ class _ReaderPageState extends State<ReaderPage>
     _layoutWidth = MediaQuery.sizeOf(context).width;
     _layoutTypeface = widget.state.appTypeface;
     final dark = Theme.of(context).brightness == Brightness.dark;
+    final palette = switch (widget.state.readerBackground) {
+      'paper' => (
+        background: const Color(0xFFFCFBF6),
+        foreground: ink,
+      ),
+      'cream' => (
+        background: const Color(0xFFF5EEDC),
+        foreground: const Color(0xFF4A3F2A),
+      ),
+      'green' => (
+        background: const Color(0xFFCBE3CE),
+        foreground: const Color(0xFF2C382D),
+      ),
+      'night' => (
+        background: const Color(0xFF111114),
+        foreground: const Color(0xFFC6C6C6),
+      ),
+      _ => (
+        background: Theme.of(context).colorScheme.surface,
+        foreground: dark ? const Color(0xFFE8E8E8) : ink,
+      ),
+    };
     return Scaffold(
       // The catalogue owns the keyboard inset; keep the obscured article and
       // its saved scroll geometry fixed while searching in the drawer.
@@ -3768,7 +4199,10 @@ class _ReaderPageState extends State<ReaderPage>
       body: Atmosphere(
         shareGlass: true,
         archiveBackdrop: false,
-        child: Stack(
+        // Background, eye-care and page-mode selections repaint this shell.
+        child: AnimatedBuilder(
+          animation: widget.state.readerSettingsChanges,
+          builder: (context, _) => Stack(
           children: [
             ReaderScreenBinding(state: widget.state),
             Positioned.fill(
@@ -3778,7 +4212,7 @@ class _ReaderPageState extends State<ReaderPage>
                 child: RepaintBoundary(
                   key: const ValueKey('reader-article-boundary'),
                   child: ColoredBox(
-                    color: Theme.of(context).colorScheme.surface,
+                    color: palette.background,
                     child: CallbackShortcuts(
                       bindings: {
                         const SingleActivator(
@@ -3812,8 +4246,16 @@ class _ReaderPageState extends State<ReaderPage>
                           child: GestureDetector(
                             key: const ValueKey('reader-content-tap'),
                             behavior: HitTestBehavior.translucent,
-                            onTap: _toggleChrome,
-                            child: _article(context, chapter, dark),
+                            // Pages turn from tap zones; scrolling keeps the
+                            // whole surface as the chrome toggle.
+                            onTapUp:
+                                widget.state.readerPageMode == 'horizontal'
+                                ? _pagedTap
+                                : null,
+                            onTap: widget.state.readerPageMode == 'horizontal'
+                                ? null
+                                : _toggleChrome,
+                            child: _article(context, chapter, palette.foreground),
                           ),
                         ),
                       ),
@@ -3822,7 +4264,25 @@ class _ReaderPageState extends State<ReaderPage>
                 ),
               ),
             ),
-            const Positioned.fill(child: ReaderEdgeBlur()),
+            if (widget.state.readerEyeCare)
+              const Positioned.fill(
+                child: IgnorePointer(
+                  // A quiet warm wash over the article only; chrome keeps its
+                  // regular contrast for controls.
+                  child: ColoredBox(color: Color(0x21F5B04A)),
+                ),
+              ),
+            AnimatedBuilder(
+              animation: _chrome,
+              // The immersive surface owns no glass: edges fade out with the
+              // chrome and the layer stops painting entirely once hidden.
+              builder: (context, child) => _chrome.value > .01
+                  ? Positioned.fill(
+                      child: Opacity(opacity: _chrome.value, child: child),
+                    )
+                  : const SizedBox.shrink(),
+              child: const ReaderEdgeBlur(),
+            ),
             Positioned(
               top: 0,
               left: 0,
@@ -3923,6 +4383,7 @@ class _ReaderPageState extends State<ReaderPage>
             ),
           ],
         ),
+        ),
       ),
     );
   }
@@ -3930,7 +4391,7 @@ class _ReaderPageState extends State<ReaderPage>
   Widget _article(
     BuildContext context,
     NovelChapter chapter,
-    bool dark,
+    Color foreground,
   ) => AnimatedBuilder(
     animation: widget.state.readerSettingsChanges,
     builder: (context, child) =>
@@ -3959,8 +4420,24 @@ class _ReaderPageState extends State<ReaderPage>
               fontSize: widget.state.fontSize,
               height: widget.state.lineHeight,
               letterSpacing: .1,
-              color: dark ? const Color(0xFFE8E8E8) : ink,
+              color: foreground,
             );
+            // Switching modes invalidates the live viewport geometry; the last
+            // anchor re-lands through the normal restore path.
+            if (_renderedPageMode != widget.state.readerPageMode) {
+              _renderedPageMode = widget.state.readerPageMode;
+              final anchor =
+                  _currentPosition() ??
+                  widget.state.positionFor(widget.novel.id);
+              if (anchor != null) {
+                _restorePending = anchor;
+                _restoreQueued = false;
+                _restoreTicket++;
+                _restoring = true;
+              }
+            }
+            final horizontal =
+                widget.state.readerPageMode == 'horizontal' && ready;
             return NotificationListener<ScrollNotification>(
               onNotification: (notification) {
                 if (notification.depth == 0) {
@@ -3983,7 +4460,9 @@ class _ReaderPageState extends State<ReaderPage>
                 }
                 return false;
               },
-              child: CustomScrollView(
+              child: horizontal
+                  ? _pagedArticle(context, content!, paragraphStyle)
+                  : CustomScrollView(
                 key: const ValueKey('reader-scroll'),
                 controller: _scroll,
                 cacheExtent: (MediaQuery.sizeOf(context).height * .75).clamp(
@@ -4009,9 +4488,7 @@ class _ReaderPageState extends State<ReaderPage>
                               Text(
                                 '第 ${_chapter + 1} 章',
                                 style: TextStyle(
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
+                                  color: foreground.withValues(alpha: .55),
                                   fontSize: 12,
                                   fontWeight: FontWeight.w500,
                                 ),
@@ -4030,9 +4507,10 @@ class _ReaderPageState extends State<ReaderPage>
                           const SizedBox(height: 12),
                           Text(
                             chapter.title,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 23,
                               fontWeight: FontWeight.w700,
+                              color: foreground,
                             ),
                           ),
                         ],
@@ -4132,16 +4610,14 @@ class _ReaderPageState extends State<ReaderPage>
                             SizedBox(
                               width: 30,
                               child: Divider(
-                                color: Theme.of(context).dividerColor,
+                                color: foreground.withValues(alpha: .25),
                               ),
                             ),
                             const SizedBox(height: 16),
                             Text(
                               '本章完',
                               style: TextStyle(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSurfaceVariant,
+                                color: foreground.withValues(alpha: .55),
                               ),
                             ),
                             const SizedBox(height: 12),
@@ -4156,9 +4632,7 @@ class _ReaderPageState extends State<ReaderPage>
                                 '已读至当前目录末章',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
+                                  color: foreground.withValues(alpha: .55),
                                 ),
                               ),
                           ],
@@ -4263,6 +4737,35 @@ class _ReaderPageState extends State<ReaderPage>
       });
       final ticket = ++_restoreTicket;
       _restoring = true;
+      if (widget.state.readerPageMode == 'horizontal') {
+        final pagination = _pagination;
+        final controller = _pages;
+        if (pagination != null &&
+            controller?.hasClients == true &&
+            pagination.pageCount > 0) {
+          final page = pagination
+              .pageOfParagraph(match.paragraph)
+              .clamp(0, pagination.pageCount - 1);
+          _persistJumpTarget(
+            _pageViewportHeight * page,
+            _pageViewportHeight * pagination.pageCount,
+          );
+          await controller.animateToPage(
+            page,
+            duration: NovelMotion.enter,
+            curve: Curves.easeOutCubic,
+          );
+        }
+        if (!mounted ||
+            generation != _contentGeneration ||
+            ticket != _restoreTicket) {
+          return;
+        }
+        _restoring = false;
+        _savePosition(notify: false);
+        _showChrome(true);
+        return;
+      }
       for (var step = 0; step < 20; step++) {
         if (!mounted ||
             generation != _contentGeneration ||
@@ -4282,7 +4785,9 @@ class _ReaderPageState extends State<ReaderPage>
         ), _readingInset + 8);
         final target = precise ?? estimate?.offset;
         if (target == null) break;
-        _scroll.jumpTo(target.clamp(0.0, double.infinity));
+        final destination = target.clamp(0.0, double.infinity);
+        _scroll.jumpTo(destination);
+        _persistJumpTarget(destination, _scroll.position.maxScrollExtent);
         await WidgetsBinding.instance.endOfFrame;
         if (!mounted ||
             generation != _contentGeneration ||

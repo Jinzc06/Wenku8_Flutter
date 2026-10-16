@@ -927,6 +927,13 @@ class NovelCover extends StatelessWidget {
                   }
                   return Image.memory(
                     bytes,
+                    // Row thumbnails decode at painted size; the Hero flight
+                    // streams its own full-resolution texture.
+                    cacheWidth: width <= 64
+                        ? (width *
+                              MediaQuery.devicePixelRatioOf(context))
+                              .ceil()
+                        : null,
                     fit: BoxFit.cover,
                     gaplessPlayback: true,
                     errorBuilder: (context, error, stack) => fallback,

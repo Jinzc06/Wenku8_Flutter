@@ -5,6 +5,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import java.security.KeyStore
+import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -32,8 +33,16 @@ internal class AccountSessionStore(context: Context) {
             cipher.doFinal(Base64.decode(parts[1], Base64.NO_WRAP)).toString(Charsets.UTF_8)
                 .takeIf { Regex("[A-Za-z0-9,-]{8,256}").matches(it) }
         }
-    } catch (_: Exception) {
+    } catch (_: AEADBadTagException) {
+        // A failed GCM tag means the sealed value can never decrypt again.
         preferences.edit().clear().commit()
+        null
+    } catch (_: IllegalArgumentException) {
+        // Malformed stored value; keeping it would fail every later read.
+        preferences.edit().clear().commit()
+        null
+    } catch (_: Exception) {
+        // Transient keystore failures must not log the account out forever.
         null
     }
     fun write(cookie: String?) {

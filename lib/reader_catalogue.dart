@@ -169,12 +169,48 @@ class _ReaderCatalogueState extends State<ReaderCatalogue> {
     );
   }
 
+  Widget _volumeHeading(BuildContext context, String label) => Padding(
+    padding: const EdgeInsets.fromLTRB(10, 20, 10, 8),
+    child: Row(
+      children: [
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 2,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(child: Container(height: 1, color: Theme.of(context).dividerColor)),
+      ],
+    ),
+  );
+
   Widget _row(BuildContext context, int index) {
     final chapter = widget.novel.chapters[index];
     final current = index == widget.currentChapter;
+    // Volumes arrive from the catalogue feed; a repeated or absent label
+    // renders no heading so flat directories keep their compact rhythm.
+    final previous = index > 0 ? widget.novel.chapters[index - 1] : null;
+    final volume = chapter.volume;
+    final heading = volume != null &&
+            volume.isNotEmpty &&
+            volume != previous?.volume
+        ? _volumeHeading(context, volume)
+        : null;
     return Semantics(
       selected: current,
-      child: JellyTapSurface(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (heading != null) heading,
+          JellyTapSurface(
         key: ValueKey('reader-chapter-$index'),
         onTap: () {
           FocusScope.of(context).unfocus();
@@ -233,6 +269,8 @@ class _ReaderCatalogueState extends State<ReaderCatalogue> {
             ],
           ),
         ),
+          ),
+        ],
       ),
     );
   }

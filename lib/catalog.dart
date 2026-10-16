@@ -83,11 +83,14 @@ class Novel {
 }
 
 class NovelChapter {
-  const NovelChapter(this.title, this.content, {this.id = 0});
+  const NovelChapter(this.title, this.content, {this.id = 0, this.volume});
 
   final String title;
   final String content;
   final int id;
+
+  /// Volume label from the catalogue feed; null when the feed has no volumes.
+  final String? volume;
 }
 
 abstract class NovelRepository {

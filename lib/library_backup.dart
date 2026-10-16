@@ -14,10 +14,14 @@ final backupPreferenceKeys = <String>{
   'glassBlur',
   'glassOpacity',
   'readerKeepScreenOn',
+  'readerPageMode',
+  'readerBackground',
+  'readerEyeCare',
   'checkAppUpdates',
   'appTypeface',
   'shelfSort',
   'shelfFilter',
+  'shelfDisplay',
   PerformancePreferences.modeKey,
   ...PerformanceEffect.values.map((effect) => effect.preferenceKey),
 };
@@ -150,8 +154,17 @@ Map<String, Object> _validateRecords(Map<String, dynamic> input) {
           'reading',
           'finished',
         ].contains(value),
+        'shelfDisplay' => value == 'list' || value == 'carousel',
+        'readerPageMode' => value == 'scroll' || value == 'horizontal',
+        'readerBackground' =>
+          value == 'system' ||
+          value == 'paper' ||
+          value == 'cream' ||
+          value == 'green' ||
+          value == 'night',
         'reduceMotion' ||
         'readerKeepScreenOn' ||
+        'readerEyeCare' ||
         'checkAppUpdates' => value is bool,
         'appTypeface' => value == 'system' || value == 'sourceHanSerif',
         'readerFontSize' => _number(value, 15, 27),

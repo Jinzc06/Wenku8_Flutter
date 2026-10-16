@@ -218,6 +218,18 @@ class LibraryState extends ChangeNotifier {
     _glassBlur = preference('glassBlur', 8, 0, 24);
     _glassOpacity = preference('glassOpacity', .87, 0, 1);
     _keepScreenOn = _prefs.get('readerKeepScreenOn') == true;
+    _readerPageMode = switch (_prefs.get('readerPageMode')) {
+      'horizontal' => 'horizontal',
+      _ => 'scroll',
+    };
+    _readerBackground = switch (_prefs.get('readerBackground')) {
+      'paper' => 'paper',
+      'cream' => 'cream',
+      'green' => 'green',
+      'night' => 'night',
+      _ => 'system',
+    };
+    _readerEyeCare = _prefs.get('readerEyeCare') == true;
     _shelfSort = switch (_prefs.get('shelfSort')) {
       'recentAdded' => 'recentAdded',
       'title' => 'title',
@@ -228,6 +240,10 @@ class LibraryState extends ChangeNotifier {
       'reading' => 'reading',
       'finished' => 'finished',
       _ => 'all',
+    };
+    _shelfDisplay = switch (_prefs.get('shelfDisplay')) {
+      'carousel' => 'carousel',
+      _ => 'list',
     };
     final recent = _prefs.get('recentSearches');
     if (recent is List<String>) {
@@ -266,6 +282,10 @@ class LibraryState extends ChangeNotifier {
   List<String> _recentSearches = const [];
   String _shelfSort = 'recentRead';
   String _shelfFilter = 'all';
+  String _shelfDisplay = 'list';
+  String _readerPageMode = 'scroll';
+  String _readerBackground = 'system';
+  bool _readerEyeCare = false;
   bool _keepScreenOn = false;
   int _metadataEncodes = 0;
   Future<void> _positionWrites = Future.value();
@@ -301,6 +321,10 @@ class LibraryState extends ChangeNotifier {
   List<String> get recentSearches => List.unmodifiable(_recentSearches);
   String get shelfSort => _shelfSort;
   String get shelfFilter => _shelfFilter;
+  String get shelfDisplay => _shelfDisplay;
+  String get readerPageMode => _readerPageMode;
+  String get readerBackground => _readerBackground;
+  bool get readerEyeCare => _readerEyeCare;
   bool get keepScreenOn => _keepScreenOn;
   ThemeMode get theme => _theme;
   double get fontSize => _fontSize;
@@ -388,10 +412,14 @@ class LibraryState extends ChangeNotifier {
     });
   }
 
-  Future<void> setShelfView({String? sort, String? filter}) async {
+  Future<void> setShelfView({
+    String? sort,
+    String? filter,
+    String? display,
+  }) async {
     if (_restoreBarrier case final barrier?) {
       return barrier.future.then(
-        (_) => setShelfView(sort: sort, filter: filter),
+        (_) => setShelfView(sort: sort, filter: filter, display: display),
       );
     }
     await _queuePositionWrite(() async {
@@ -402,14 +430,71 @@ class LibraryState extends ChangeNotifier {
           ['all', 'unread', 'reading', 'finished'].contains(filter)
           ? filter!
           : _shelfFilter;
+      final nextDisplay = display == 'list' || display == 'carousel'
+          ? display!
+          : _shelfDisplay;
       await _commitLibraryRecords({
         'shelfSort': nextSort,
         'shelfFilter': nextFilter,
+        'shelfDisplay': nextDisplay,
       });
-      if (nextSort != _shelfSort || nextFilter != _shelfFilter) {
+      if (nextSort != _shelfSort ||
+          nextFilter != _shelfFilter ||
+          nextDisplay != _shelfDisplay) {
         _shelfSort = nextSort;
         _shelfFilter = nextFilter;
-        if (!_disposed) _shelfViewChanges.notifyListeners();
+        _shelfDisplay = nextDisplay;
+        // The shelf listens to view changes; the settings page listens here.
+        if (!_disposed) {
+          _shelfViewChanges.notifyListeners();
+          _settings.notifyListeners();
+        }
+      }
+    });
+  }
+
+  Future<void> setReaderPresentation({
+    String? pageMode,
+    String? background,
+    bool? eyeCare,
+  }) async {
+    if (_restoreBarrier case final barrier?) {
+      return barrier.future.then(
+        (_) => setReaderPresentation(
+          pageMode: pageMode,
+          background: background,
+          eyeCare: eyeCare,
+        ),
+      );
+    }
+    await _queuePositionWrite(() async {
+      final nextMode = pageMode == 'scroll' || pageMode == 'horizontal'
+          ? pageMode!
+          : _readerPageMode;
+      final nextBackground = switch (background) {
+        'system' => 'system',
+        'paper' => 'paper',
+        'cream' => 'cream',
+        'green' => 'green',
+        'night' => 'night',
+        _ => _readerBackground,
+      };
+      final nextEyeCare = eyeCare ?? _readerEyeCare;
+      await _commitLibraryRecords({
+        'readerPageMode': nextMode,
+        'readerBackground': nextBackground,
+        'readerEyeCare': nextEyeCare,
+      });
+      if (nextMode != _readerPageMode ||
+          nextBackground != _readerBackground ||
+          nextEyeCare != _readerEyeCare) {
+        _readerPageMode = nextMode;
+        _readerBackground = nextBackground;
+        _readerEyeCare = nextEyeCare;
+        if (!_disposed) {
+          _readerSettings.notifyListeners();
+          _settings.notifyListeners();
+        }
       }
     });
   }
@@ -739,7 +824,7 @@ class LibraryState extends ChangeNotifier {
     _chapters[id] = chapter;
     final reveal = _hiddenHistory.remove(id);
     final hidden = reveal ? _hiddenHistory.map((id) => '$id').toList() : null;
-    notifyListeners();
+    if (!_disposed) notifyListeners();
     _historyChanged();
     await _queuePositionWrite(() async {
       await writeLibraryPreference(_prefs, 'chapter_$id', chapter);
@@ -809,7 +894,7 @@ class LibraryState extends ChangeNotifier {
     _known[novel.id] = novel;
     final reveal = _hiddenHistory.remove(novel.id);
     final hidden = reveal ? _hiddenHistory.map((id) => '$id').toList() : null;
-    if (notify) notifyListeners();
+    if (notify && !_disposed) notifyListeners();
     _historyChanged();
     final snapshot = _novelSnapshot(novel);
     final record = jsonEncode(position.toJson());
@@ -840,10 +925,12 @@ class LibraryState extends ChangeNotifier {
       return;
     }
     _theme = mode;
-    _application.notifyListeners();
-    _appearance.notifyListeners();
-    _settings.notifyListeners();
-    notifyListeners();
+    if (!_disposed) {
+      _application.notifyListeners();
+      _appearance.notifyListeners();
+      _settings.notifyListeners();
+      notifyListeners();
+    }
     await writeLibraryPreference(_prefs, 'theme', mode.name);
   }
 
@@ -894,8 +981,10 @@ class LibraryState extends ChangeNotifier {
     if (font != _fontSize || spacing != _lineHeight) {
       _fontSize = font;
       _lineHeight = spacing;
-      _readerSettings.notifyListeners();
-      _settings.notifyListeners();
+      if (!_disposed) {
+        _readerSettings.notifyListeners();
+        _settings.notifyListeners();
+      }
     }
     if (persist) {
       if (fontSize?.isFinite == true) {
@@ -937,10 +1026,12 @@ class LibraryState extends ChangeNotifier {
       return;
     }
     _reduceMotion = value;
-    _application.notifyListeners();
-    _appearance.notifyListeners();
-    _settings.notifyListeners();
-    notifyListeners();
+    if (!_disposed) {
+      _application.notifyListeners();
+      _appearance.notifyListeners();
+      _settings.notifyListeners();
+      notifyListeners();
+    }
     await writeLibraryPreference(_prefs, 'reduceMotion', value);
   }
 
@@ -952,10 +1043,12 @@ class LibraryState extends ChangeNotifier {
     final next = value.clamp(0.0, 24.0);
     if (_glassBlur != next) {
       _glassBlur = next;
-      _glassChanges.notifyListeners();
-      _appearance.notifyListeners();
-      _settings.notifyListeners();
-      notifyListeners();
+      if (!_disposed) {
+        _glassChanges.notifyListeners();
+        _appearance.notifyListeners();
+        _settings.notifyListeners();
+        notifyListeners();
+      }
     }
     if (persist) {
       await writeLibraryPreference(_prefs, 'glassBlur', next);
@@ -972,10 +1065,12 @@ class LibraryState extends ChangeNotifier {
     final next = value.clamp(0.0, 1.0);
     if (_glassOpacity != next) {
       _glassOpacity = next;
-      _glassChanges.notifyListeners();
-      _appearance.notifyListeners();
-      _settings.notifyListeners();
-      notifyListeners();
+      if (!_disposed) {
+        _glassChanges.notifyListeners();
+        _appearance.notifyListeners();
+        _settings.notifyListeners();
+        notifyListeners();
+      }
     }
     if (persist) {
       await writeLibraryPreference(_prefs, 'glassOpacity', next);
@@ -995,8 +1090,12 @@ class LibraryState extends ChangeNotifier {
     'glassBlur': _glassBlur,
     'glassOpacity': _glassOpacity,
     'readerKeepScreenOn': _keepScreenOn,
+    'readerPageMode': _readerPageMode,
+    'readerBackground': _readerBackground,
+    'readerEyeCare': _readerEyeCare,
     'shelfSort': _shelfSort,
     'shelfFilter': _shelfFilter,
+    'shelfDisplay': _shelfDisplay,
     for (final entry in _added.entries) 'shelf_added_${entry.key}': entry.value,
     for (final entry in _known.entries)
       'novel_meta_${entry.key}': jsonEncode(entry.value.toSnapshot()),
@@ -1176,7 +1275,10 @@ class LibraryState extends ChangeNotifier {
         _recentSearches = searches;
         if (importPreferences) {
           if (records['theme'] case final String value) {
-            _theme = ThemeMode.values.firstWhere((mode) => mode.name == value);
+            _theme = ThemeMode.values.firstWhere(
+              (mode) => mode.name == value,
+              orElse: () => _theme,
+            );
           }
           if (records['readerFontSize'] case final num value) {
             _fontSize = value.toDouble();
@@ -1204,9 +1306,41 @@ class LibraryState extends ChangeNotifier {
           if (records['readerKeepScreenOn'] case final bool value) {
             _keepScreenOn = value;
           }
-          if (records['shelfSort'] case final String value) _shelfSort = value;
-          if (records['shelfFilter'] case final String value) {
-            _shelfFilter = value;
+          // Unknown values keep the current setting: restore must not publish
+          // enum names that consumers look up with `firstWhere`.
+          _shelfSort = switch (records['shelfSort']) {
+            'recentRead' => 'recentRead',
+            'recentAdded' => 'recentAdded',
+            'title' => 'title',
+            _ => _shelfSort,
+          };
+          _shelfFilter = switch (records['shelfFilter']) {
+            'all' => 'all',
+            'unread' => 'unread',
+            'reading' => 'reading',
+            'finished' => 'finished',
+            _ => _shelfFilter,
+          };
+          _shelfDisplay = switch (records['shelfDisplay']) {
+            'list' => 'list',
+            'carousel' => 'carousel',
+            _ => _shelfDisplay,
+          };
+          _readerPageMode = switch (records['readerPageMode']) {
+            'scroll' => 'scroll',
+            'horizontal' => 'horizontal',
+            _ => _readerPageMode,
+          };
+          _readerBackground = switch (records['readerBackground']) {
+            'system' => 'system',
+            'paper' => 'paper',
+            'cream' => 'cream',
+            'green' => 'green',
+            'night' => 'night',
+            _ => _readerBackground,
+          };
+          if (records['readerEyeCare'] case final bool value) {
+            _readerEyeCare = value;
           }
         }
         if (!_disposed) {

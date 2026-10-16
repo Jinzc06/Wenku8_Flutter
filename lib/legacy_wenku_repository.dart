@@ -16,11 +16,26 @@ List<NovelChapter> _decodeChapters(String source) {
     throw const FormatException('目录接口返回错误');
   }
   final ids = <int>{};
+  // Newer feeds wrap chapters in <volume volname>; feeds without volumes list
+  // chapters directly and every label simply stays null.
+  final labels = <XmlElement, String>{};
+  for (final volume in document.findAllElements('volume')) {
+    final label = (volume.getAttribute('volname') ?? '').trim();
+    if (label.isEmpty) continue;
+    for (final chapter in volume.findElements('chapter')) {
+      labels[chapter] = label;
+    }
+  }
   return List.unmodifiable([
     for (final element in document.findAllElements('chapter'))
       if (int.tryParse(element.getAttribute('cid') ?? '') case final int id)
         if (id > 0 && ids.add(id))
-          NovelChapter(element.innerText.trim(), '', id: id),
+          NovelChapter(
+            element.innerText.trim(),
+            '',
+            id: id,
+            volume: labels[element],
+          ),
   ]);
 }
 

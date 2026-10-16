@@ -159,8 +159,10 @@ internal class Wenku8Bridge(context: Context, private val postToMain: (Runnable)
                 images.mkdirs()
                 val temporary = File(images, "$name.part")
                 temporary.writeBytes(bytes)
-                check(temporary.renameTo(file))
-                val cached = images.listFiles()?.filter { it.isFile } ?: emptyList()
+                val renamed = temporary.renameTo(file)
+                if (!renamed) temporary.delete()
+                check(renamed)
+                val cached = images.listFiles()?.filter { it.isFile && !it.name.endsWith(".part") } ?: emptyList()
                 var size = cached.sumOf { it.length() }
                 for (old in cached.sortedBy { it.lastModified() }) {
                     if (size <= 256L * 1024 * 1024) break
