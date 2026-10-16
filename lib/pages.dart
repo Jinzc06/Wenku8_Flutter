@@ -1534,7 +1534,7 @@ class SettingsPage extends StatelessWidget {
           ContentPanel(
             child: Row(
               children: [
-                const Icon(CupertinoIcons.books_vertical, size: 21),
+                const Icon(CupertinoIcons.book, size: 21),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -3143,7 +3143,8 @@ class _ReaderPageState extends State<ReaderPage>
           final pagination = _pagination;
           final controller = _pages;
           if (pagination == null ||
-              controller?.hasClients != true ||
+              controller == null ||
+              !controller.hasClients ||
               pagination.pageCount < 1) {
             return;
           }
@@ -3800,7 +3801,8 @@ class _ReaderPageState extends State<ReaderPage>
       if (!_ready ||
           _restoring ||
           pagination == null ||
-          controller?.hasClients != true ||
+          controller == null ||
+          !controller.hasClients ||
           widget.novel.chapters.isEmpty) {
         return null;
       }
@@ -4461,7 +4463,7 @@ class _ReaderPageState extends State<ReaderPage>
                 return false;
               },
               child: horizontal
-                  ? _pagedArticle(context, content!, paragraphStyle)
+                  ? _pagedArticle(context, content, paragraphStyle)
                   : CustomScrollView(
                 key: const ValueKey('reader-scroll'),
                 controller: _scroll,
@@ -4741,7 +4743,8 @@ class _ReaderPageState extends State<ReaderPage>
         final pagination = _pagination;
         final controller = _pages;
         if (pagination != null &&
-            controller?.hasClients == true &&
+            controller != null &&
+            controller.hasClients &&
             pagination.pageCount > 0) {
           final page = pagination
               .pageOfParagraph(match.paragraph)

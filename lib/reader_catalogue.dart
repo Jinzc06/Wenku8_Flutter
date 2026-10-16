@@ -209,7 +209,7 @@ class _ReaderCatalogueState extends State<ReaderCatalogue> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (heading != null) heading,
+          ?heading,
           JellyTapSurface(
         key: ValueKey('reader-chapter-$index'),
         onTap: () {
