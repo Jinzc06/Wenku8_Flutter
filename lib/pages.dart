@@ -4164,6 +4164,23 @@ class _ReaderPageState extends State<ReaderPage>
     });
   }
 
+  /// Reader colour scheme. Resolved where it is consumed: the shell only
+  /// rebuilds through its AnimatedBuilder, so a palette captured in an outer
+  /// build would stay stale after a background switch.
+  ({Color background, Color foreground}) _readerPalette(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return switch (widget.state.readerBackground) {
+      'paper' => (background: const Color(0xFFFCFBF6), foreground: ink),
+      'cream' => (background: const Color(0xFFF5EEDC), foreground: const Color(0xFF4A3F2A)),
+      'green' => (background: const Color(0xFFCBE3CE), foreground: const Color(0xFF2C382D)),
+      'night' => (background: const Color(0xFF111114), foreground: const Color(0xFFC6C6C6)),
+      _ => (
+        background: Theme.of(context).colorScheme.surface,
+        foreground: dark ? const Color(0xFFE8E8E8) : ink,
+      ),
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final chapter = widget.novel.chapters.isEmpty
@@ -4171,29 +4188,6 @@ class _ReaderPageState extends State<ReaderPage>
         : widget.novel.chapters[_chapter];
     _layoutWidth = MediaQuery.sizeOf(context).width;
     _layoutTypeface = widget.state.appTypeface;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final palette = switch (widget.state.readerBackground) {
-      'paper' => (
-        background: const Color(0xFFFCFBF6),
-        foreground: ink,
-      ),
-      'cream' => (
-        background: const Color(0xFFF5EEDC),
-        foreground: const Color(0xFF4A3F2A),
-      ),
-      'green' => (
-        background: const Color(0xFFCBE3CE),
-        foreground: const Color(0xFF2C382D),
-      ),
-      'night' => (
-        background: const Color(0xFF111114),
-        foreground: const Color(0xFFC6C6C6),
-      ),
-      _ => (
-        background: Theme.of(context).colorScheme.surface,
-        foreground: dark ? const Color(0xFFE8E8E8) : ink,
-      ),
-    };
     return Scaffold(
       // The catalogue owns the keyboard inset; keep the obscured article and
       // its saved scroll geometry fixed while searching in the drawer.
@@ -4204,7 +4198,9 @@ class _ReaderPageState extends State<ReaderPage>
         // Background, eye-care and page-mode selections repaint this shell.
         child: AnimatedBuilder(
           animation: widget.state.readerSettingsChanges,
-          builder: (context, _) => Stack(
+          builder: (context, _) {
+            final palette = _readerPalette(context);
+            return Stack(
           children: [
             ReaderScreenBinding(state: widget.state),
             Positioned.fill(
@@ -4384,7 +4380,8 @@ class _ReaderPageState extends State<ReaderPage>
               ),
             ),
           ],
-        ),
+            );
+          },
         ),
       ),
     );

@@ -143,6 +143,56 @@ void main() {
     );
   }
 
+  testWidgets('reader background and eye-care selections repaint at once', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final state = await LibraryState.load();
+    addTearDown(state.dispose);
+    const repository = DemoNovelRepository();
+    final book = (await repository.list()).first;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: novelTheme(Brightness.light),
+        home: ReaderPage(
+          novel: book,
+          state: state,
+          repository: repository,
+          initialChapter: 0,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    Color background() => tester
+        .widget<ColoredBox>(
+          find
+              .descendant(
+                of: find.byKey(const ValueKey('reader-article-boundary')),
+                matching: find.byType(ColoredBox),
+              )
+              .first,
+        )
+        .color;
+    final surface = background();
+    await state.setReaderPresentation(background: 'night');
+    await tester.pump();
+    expect(background(), const Color(0xFF111114));
+    await state.setReaderPresentation(eyeCare: true);
+    await tester.pump();
+    expect(background(), const Color(0xFF111114));
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is ColoredBox && widget.color == const Color(0x21F5B04A),
+      ),
+      findsOneWidget,
+    );
+    await state.setReaderPresentation(background: 'system', eyeCare: false);
+    await tester.pump();
+    expect(background(), surface);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('detail ID plaque initially stays outside the header blur', (
     tester,
   ) async {
