@@ -410,8 +410,8 @@ void main() {
       expect(output.initialPosition, Duration.zero);
       expect(controller.snapshot.value.phase, ListeningPhase.playing);
       expect(chrome(tester), before);
-      // A single tap still hides controls. Double tap remains available in focus
-      // mode without removing the permanent scroll-edge blur.
+      // A single tap still hides controls, which now also unmounts the
+      // scroll-edge glass; double tap remains available in focus mode.
       await tester.tap(find.byKey(const ValueKey('paragraph-2')));
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pumpAndSettle();
@@ -419,7 +419,7 @@ void main() {
       await doubleTap(tester, find.byKey(const ValueKey('paragraph-2')));
       expect(controller.snapshot.value.phase, ListeningPhase.paused);
       expect(chrome(tester), 0);
-      expect(find.byType(ReaderEdgeBlur), findsOneWidget);
+      expect(find.byType(ReaderEdgeBlur), findsNothing);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
       await disposeFixture(tester);

@@ -238,87 +238,6 @@ class _ReaderToolsState extends State<ReaderTools> {
             ),
             const ValueKey('reader-line-height-slider'),
           ),
-          const Divider(height: 24),
-          CupertinoSlidingSegmentedControl<String>(
-            key: const ValueKey('reader-page-mode'),
-            groupValue: widget.state.readerPageMode,
-            children: const {
-              'scroll': Padding(
-                padding: EdgeInsets.symmetric(horizontal: 10),
-                child: Text('上下滚动'),
-              ),
-              'horizontal': Padding(
-                padding: EdgeInsets.symmetric(horizontal: 10),
-                child: Text('左右翻页'),
-              ),
-            },
-            onValueChanged: (value) async {
-              if (value == null) return;
-              try {
-                await widget.state.setReaderPresentation(pageMode: value);
-              } catch (_) {
-                if (context.mounted) {
-                  showNovelFeedback(context, '翻页方式保存失败，请重试');
-                }
-              }
-            },
-          ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final (name, label) in [
-                ('system', '跟随系统'),
-                ('paper', '纸白'),
-                ('cream', '米黄'),
-                ('green', '护眼绿'),
-                ('night', '夜间'),
-              ])
-                GlassTextButton(
-                  key: ValueKey('reader-background-$name'),
-                  onPressed: () async {
-                    try {
-                      await widget.state.setReaderPresentation(
-                        background: name,
-                      );
-                    } catch (_) {
-                      if (context.mounted) {
-                        showNovelFeedback(context, '背景设置保存失败，请重试');
-                      }
-                    }
-                  },
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      fontWeight: widget.state.readerBackground == name
-                          ? FontWeight.w700
-                          : FontWeight.w400,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              const Expanded(child: Text('护眼暖色滤镜')),
-              CupertinoSwitch(
-                key: const ValueKey('reader-eye-care'),
-                value: widget.state.readerEyeCare,
-                activeTrackColor: Theme.of(context).colorScheme.primary,
-                onChanged: (value) async {
-                  try {
-                    await widget.state.setReaderPresentation(eyeCare: value);
-                  } catch (_) {
-                    if (context.mounted) {
-                      showNovelFeedback(context, '护眼设置保存失败，请重试');
-                    }
-                  }
-                },
-              ),
-            ],
-          ),
           _adjustment(
             Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -415,6 +334,89 @@ class _ReaderToolsState extends State<ReaderTools> {
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
+                ),
+                const Divider(height: 24),
+                CupertinoSlidingSegmentedControl<String>(
+                  key: const ValueKey('reader-page-mode'),
+                  groupValue: widget.state.readerPageMode,
+                  children: const {
+                    'scroll': Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 10),
+                      child: Text('上下滚动'),
+                    ),
+                    'horizontal': Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 10),
+                      child: Text('左右翻页'),
+                    ),
+                  },
+                  onValueChanged: (value) async {
+                    if (value == null) return;
+                    try {
+                      await widget.state.setReaderPresentation(pageMode: value);
+                    } catch (_) {
+                      if (context.mounted) {
+                        showNovelFeedback(context, '翻页方式保存失败，请重试');
+                      }
+                    }
+                  },
+                ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final (name, label) in [
+                      ('system', '跟随系统'),
+                      ('paper', '纸白'),
+                      ('cream', '米黄'),
+                      ('green', '护眼绿'),
+                      ('night', '夜间'),
+                    ])
+                      GlassTextButton(
+                        key: ValueKey('reader-background-$name'),
+                        onPressed: () async {
+                          try {
+                            await widget.state.setReaderPresentation(
+                              background: name,
+                            );
+                          } catch (_) {
+                            if (context.mounted) {
+                              showNovelFeedback(context, '背景设置保存失败，请重试');
+                            }
+                          }
+                        },
+                        child: Text(
+                          label,
+                          style: TextStyle(
+                            fontWeight: widget.state.readerBackground == name
+                                ? FontWeight.w700
+                                : FontWeight.w400,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    const Expanded(child: Text('护眼暖色滤镜')),
+                    CupertinoSwitch(
+                      key: const ValueKey('reader-eye-care'),
+                      value: widget.state.readerEyeCare,
+                      activeTrackColor: Theme.of(context).colorScheme.primary,
+                      onChanged: (value) async {
+                        try {
+                          await widget.state.setReaderPresentation(
+                            eyeCare: value,
+                          );
+                        } catch (_) {
+                          if (context.mounted) {
+                            showNovelFeedback(context, '护眼设置保存失败，请重试');
+                          }
+                        }
+                      },
+                    ),
+                  ],
                 ),
               ],
             ),

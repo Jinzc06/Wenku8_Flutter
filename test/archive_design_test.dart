@@ -111,7 +111,7 @@ void main() {
     });
 
     testWidgets(
-      'reader keeps a plain canvas and permanent edge blur in $brightness',
+      'reader keeps a plain canvas and hides the edge blur with the chrome in $brightness',
       (tester) async {
         SharedPreferences.setMockInitialValues({});
         final state = await LibraryState.load();
@@ -135,7 +135,7 @@ void main() {
         expect(find.byType(ArchiveRouteTitle), findsOneWidget);
         await tester.tapAt(const Offset(400, 260));
         await tester.pumpAndSettle();
-        expect(find.byType(ReaderEdgeBlur), findsOneWidget);
+        expect(find.byType(ReaderEdgeBlur), findsNothing);
         expect(tester.takeException(), isNull);
         expect(tester.binding.transientCallbackCount, 0);
         await tester.pumpWidget(const SizedBox.shrink());

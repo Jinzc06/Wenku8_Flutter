@@ -68,23 +68,19 @@ void main({Future<void> Function(WidgetTester, GlobalKey, String)? capture}) {
 
   for (final brightness in [Brightness.light, Brightness.dark]) {
     testWidgets(
-      '120 drag/reversal frames keep exact finger deltas with persistent ${brightness.name} blur',
+      '120 drag/reversal frames keep exact finger deltas with the chrome hidden in ${brightness.name}',
       (tester) async {
         await mount(tester, brightness: brightness);
         scroll(tester).position.jumpTo(4500);
         await tester.pumpAndSettle();
         await tester.pump(const Duration(milliseconds: 200));
-        final originalEdges = tester.element(find.byType(ReaderEdgeBlur));
         final paragraphs = find.byType(ReaderParagraph).evaluate().length;
         final requests = repository.calls.length;
         await tester.tapAt(const Offset(210, 280));
         await tester.pumpAndSettle();
         expect(find.byType(GlassIconButton), findsNothing);
-        expect(
-          tester.element(find.byType(ReaderEdgeBlur)),
-          same(originalEdges),
-        );
-        expect(find.byType(ProgressiveBlur), findsNWidgets(2));
+        expect(find.byType(ReaderEdgeBlur), findsNothing);
+        expect(find.byType(ProgressiveBlur), findsNothing);
         if (capture != null) {
           await capture(
             tester,
@@ -107,10 +103,7 @@ void main({Future<void> Function(WidgetTester, GlobalKey, String)? capture}) {
         }
         expect(historyChanges, 0);
         expect(repository.calls.length, requests);
-        expect(
-          tester.element(find.byType(ReaderEdgeBlur)),
-          same(originalEdges),
-        );
+        expect(find.byType(ReaderEdgeBlur), findsNothing);
         expect(
           find.byType(ReaderParagraph).evaluate().length,
           lessThan(paragraphs + 10),

@@ -1529,61 +1529,6 @@ class SettingsPage extends StatelessWidget {
             ),
             const SizedBox(height: 24),
           ],
-          sectionHeader(context, '书架', ''),
-          const SizedBox(height: 14),
-          ContentPanel(
-            child: Row(
-              children: [
-                const Icon(CupertinoIcons.book, size: 21),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        '书架展示方式',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 5),
-                      Text(
-                        '以首页书脊轮播样式浏览书架藏书',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                CupertinoSlidingSegmentedControl<String>(
-                  key: const ValueKey('settings-shelf-display'),
-                  groupValue: state.shelfDisplay,
-                  children: const {
-                    'list': Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 8),
-                      child: Text('列表'),
-                    ),
-                    'carousel': Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 8),
-                      child: Text('书脊'),
-                    ),
-                  },
-                  onValueChanged: (value) {
-                    if (value != null) {
-                      _savePreference(
-                        context,
-                        () => state.setShelfView(display: value),
-                      );
-                    }
-                  },
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
           sectionHeader(context, '阅读偏好', ''),
           const SizedBox(height: 14),
           ContentPanel(
@@ -1696,6 +1641,61 @@ class SettingsPage extends StatelessWidget {
                       ),
                     ],
                   ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          sectionHeader(context, '书架', ''),
+          const SizedBox(height: 14),
+          ContentPanel(
+            child: Row(
+              children: [
+                const Icon(CupertinoIcons.book, size: 21),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '书架展示方式',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        '以首页书脊轮播样式浏览书架藏书',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                CupertinoSlidingSegmentedControl<String>(
+                  key: const ValueKey('settings-shelf-display'),
+                  groupValue: state.shelfDisplay,
+                  children: const {
+                    'list': Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8),
+                      child: Text('列表'),
+                    ),
+                    'carousel': Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8),
+                      child: Text('书脊'),
+                    ),
+                  },
+                  onValueChanged: (value) {
+                    if (value != null) {
+                      _savePreference(
+                        context,
+                        () => state.setShelfView(display: value),
+                      );
+                    }
+                  },
                 ),
               ],
             ),

@@ -196,7 +196,7 @@ void main({
   );
 
   testWidgets(
-    'focus reading hides controls but retains live edge blur without shifting paragraphs',
+    'focus reading hides controls and the edge blur without shifting paragraphs',
     (tester) async {
       await reader(tester, brightness: Brightness.dark);
       _scroll(tester).position.jumpTo(900);
@@ -205,12 +205,11 @@ void main({
       final original = tester.widget(paragraph);
       final offset = _scroll(tester).position.pixels;
       final header = tester.element(find.byType(FrostedHeader));
-      final underlay = tester.element(find.byType(ReaderEdgeBlur));
       await tester.tapAt(const Offset(210, 310));
       await tester.pumpAndSettle();
       expect(find.byType(GlassIconButton), findsNothing);
       expect(tester.element(find.byType(FrostedHeader)), same(header));
-      expect(tester.element(find.byType(ReaderEdgeBlur)), same(underlay));
+      expect(find.byType(ReaderEdgeBlur), findsNothing);
       expect(tester.widget(paragraph), same(original));
       expect(_scroll(tester).position.pixels, offset);
       if (capture != null) await capture(tester, boundary, 'reader-focus-dark');
