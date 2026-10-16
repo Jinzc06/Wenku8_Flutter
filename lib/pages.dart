@@ -4199,6 +4199,16 @@ class _ReaderPageState extends State<ReaderPage>
         child: AnimatedBuilder(
           animation: widget.state.readerSettingsChanges,
           builder: (context, _) {
+            if (_layoutTypeface != widget.state.appTypeface) {
+              // A global typeface switch arrives as a notification, not a
+              // widget update or an inherited dependency anymore: re-anchor
+              // here exactly like the metrics path in didChangeDependencies.
+              _layoutTypeface = widget.state.appTypeface;
+              if (_ready && !_restoring && _layoutWidth > 0) {
+                final position = _currentPosition();
+                if (position != null) _prepareRestore(position);
+              }
+            }
             final palette = _readerPalette(context);
             return Stack(
           children: [
